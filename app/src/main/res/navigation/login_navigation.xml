@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/login_navigation"
+    app:startDestination="@id/login">
+
+    <fragment
+        android:id="@+id/login"
+        android:name="com.zinterr.todagodrive.ui.login.Login"
+        android:label="login"
+        tools:layout="@layout/login">
+        <action
+            android:id="@+id/action_login_to_forgot"
+            app:destination="@id/forgot" />
+        <action
+            android:id="@+id/action_login_to_category"
+            app:destination="@id/category" />
+    </fragment>
+    <fragment
+        android:id="@+id/forgot"
+        android:name="com.zinterr.todagodrive.ui.login.Forgot"
+        android:label="forgot"
+        tools:layout="@layout/forgot" />
+    <fragment
+        android:id="@+id/category"
+        android:name="com.zinterr.todagodrive.ui.login.Category"
+        android:label="category"
+        tools:layout="@layout/category">
+        <action
+            android:id="@+id/action_category_to_signupAssociation"
+            app:destination="@id/signupAssociation" />
+        <action
+            android:id="@+id/action_category_to_signupDriver"
+            app:destination="@id/signupDriver" />
+    </fragment>
+    <fragment
+        android:id="@+id/signupAssociation"
+        android:name="com.zinterr.todagodrive.ui.login.SignupAssociation"
+        android:label="signup_association"
+        tools:layout="@layout/signup_association" />
+    <fragment
+        android:id="@+id/signupDriver"
+        android:name="com.zinterr.todagodrive.ui.login.SignupDriver"
+        android:label="signup_driver"
+        tools:layout="@layout/signup_driver" />
+</navigation>

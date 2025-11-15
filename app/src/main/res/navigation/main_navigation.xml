@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main_navigation"
+    app:startDestination="@id/home2">
+
+    <fragment
+        android:id="@+id/home2"
+        android:name="com.zinterr.todagodrive.ui.home.Home"
+        android:label="home"
+        tools:layout="@layout/home" >
+        <action
+            android:id="@+id/action_home2_to_driverProfile"
+            app:destination="@id/driverProfile" />
+    </fragment>
+    <fragment
+        android:id="@+id/driverProfile"
+        android:name="com.zinterr.todagodrive.ui.profile.DriverProfile"
+        android:label="driver_profile"
+        tools:layout="@layout/driver_profile" />
+
+</navigation>

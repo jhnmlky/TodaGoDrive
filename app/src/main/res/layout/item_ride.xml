@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cv_ride"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="5dp"
+    android:clickable="true"
+    android:focusable="true"
+    app:cardBackgroundColor="#80F3F6FF"
+    app:cardCornerRadius="3dp"
+    app:cardElevation="0dp">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="5dp">
+
+        <TextView
+            android:id="@+id/startLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_alignEnd="@+id/weightLabel"
+            android:layout_alignBottom="@id/start"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:letterSpacing="0.2"
+            android:text="@string/from"
+            android:textColor="@color/black"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/start"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_toStartOf="@id/btn_take"
+            android:layout_toEndOf="@id/startLabel"
+            android:textColor="@color/black"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/endLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/start"
+            android:layout_alignEnd="@+id/weightLabel"
+            android:layout_alignBottom="@id/end"
+            android:layout_alignParentStart="true"
+            android:letterSpacing="0.2"
+            android:text="@string/to"
+            android:textColor="@color/black"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/end"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/start"
+            android:layout_toStartOf="@id/btn_take"
+            android:layout_toEndOf="@id/endLabel"
+            android:textColor="@color/black"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tripLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/end"
+            android:layout_alignEnd="@+id/weightLabel"
+            android:layout_alignBottom="@id/trip"
+            android:layout_alignParentStart="true"
+            android:letterSpacing="0.2"
+            android:text="@string/trip"
+            android:textColor="@color/black"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/trip"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/end"
+            android:layout_toStartOf="@id/btn_take"
+            android:layout_toEndOf="@id/tripLabel"
+            android:letterSpacing="0.2"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/weightLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/trip"
+            android:layout_alignBottom="@id/weight"
+            android:layout_alignParentStart="true"
+            android:letterSpacing="0.2"
+            android:paddingStart="0dp"
+            android:paddingEnd="5dp"
+            android:text="@string/weight"
+            android:textColor="@color/black"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/weight"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/trip"
+            android:layout_toStartOf="@id/btn_take"
+            android:layout_toEndOf="@id/weightLabel"
+            android:letterSpacing="0.2"
+            android:textSize="12sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_take"
+            android:layout_width="60dp"
+            android:layout_height="40dp"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/box_blue_dark"
+            android:padding="0dp"
+            android:text="@string/take"
+            android:textAllCaps="true"
+            android:textSize="12sp"
+            app:backgroundTint="@null"
+            app:backgroundTintMode="@null"
+            app:cornerRadius="5dp" />
+
+    </RelativeLayout>
+
+</androidx.cardview.widget.CardView>

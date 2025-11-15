@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cv_driver"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="5dp"
+    app:cardBackgroundColor="#80F3F6FF"
+    app:cardCornerRadius="3dp"
+    app:cardElevation="0dp">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="10dp">
+
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/driver_profile"
+            android:layout_width="50dp"
+            android:layout_height="0dp"
+            android:layout_alignBottom="@+id/driver_plate"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:layout_marginEnd="10dp" />
+
+        <TextView
+            android:id="@+id/driver_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:layout_toEndOf="@+id/driver_profile"
+            android:textColor="@color/black"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/driver_unverified"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_alignParentEnd="true"
+            android:background="@drawable/rounded_red"
+            android:paddingHorizontal="10dp"
+            android:text="@string/unverified"
+            android:textAllCaps="true"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <RatingBar
+            android:id="@+id/driver_stars"
+            style="?android:attr/ratingBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/driver_name"
+            android:layout_marginBottom="2dp"
+            android:layout_toEndOf="@+id/driver_profile"
+            android:isIndicator="true"
+            android:numStars="5"
+            android:progressBackgroundTint="@color/gray"
+            android:progressTint="@color/yellow"
+            android:secondaryProgressTint="@android:color/transparent"
+            android:stepSize="0.1" />
+
+        <TextView
+            android:id="@+id/driver_rate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/driver_name"
+            android:layout_alignParentEnd="true"
+            android:layout_toEndOf="@id/driver_stars"
+            android:paddingHorizontal="10dp"
+            android:textColor="@color/black"
+            android:textSize="12sp"
+            android:textStyle="italic|bold" />
+
+        <TextView
+            android:id="@+id/driver_plate"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/driver_stars"
+            android:layout_alignParentEnd="true"
+            android:layout_toEndOf="@+id/driver_profile"
+            android:letterSpacing="0.2"
+            android:textColor="@color/gray_light"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/driver_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/driver_rate"
+            android:layout_alignParentEnd="true"
+            android:textColor="@color/gray"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
+    </RelativeLayout>
+
+</androidx.cardview.widget.CardView>
