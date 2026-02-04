@@ -1,5 +1,6 @@
 package com.zinterr.todagodrive.ui.popup
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.os.*
 import android.view.*
@@ -10,6 +11,7 @@ import com.squareup.picasso.Picasso
 import com.zinterr.todagodrive.databinding.DialogConfirmBinding
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
 
+@SuppressLint("SetTextI18n")
 class ConfirmDialog(
     private val title: String,
     private val message: String,

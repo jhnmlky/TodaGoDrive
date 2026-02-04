@@ -5,9 +5,10 @@ import android.content.Intent
 import android.os.*
 import androidx.fragment.app.Fragment
 import android.view.*
-import androidx.core.graphics.toColorInt
+import androidx.core.content.ContextCompat
 import androidx.core.view.*
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import com.google.firebase.Firebase
 import com.google.firebase.auth.*
 import com.google.firebase.database.*
@@ -15,6 +16,7 @@ import com.google.firebase.remoteconfig.*
 import com.google.firebase.storage.*
 import com.zinterr.todagodrive.LoginActivity
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.AssociationProfileBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
@@ -37,6 +39,7 @@ class AssociationProfile : Fragment() {
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private var passwordDialog: PasswordDialog? = null
     private var confirmDialog: ConfirmDialog? = null
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private var emailDialog: EmailDialog? = null
     private var phoneDialog: PhoneDialog? = null
@@ -67,8 +70,8 @@ class AssociationProfile : Fragment() {
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         binding.btnEditEmail.setOnDebouncedClickListener {
             editEmail()
@@ -130,14 +133,17 @@ class AssociationProfile : Fragment() {
         dbRef = Firebase.database.reference
         remoteConfig = Firebase.remoteConfig
         stRef = Firebase.storage.reference
-        user = Global.user!!
-        account = Global.account!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        user = session.user.value!!
+        account = session.account.value!!
     }
 
     private fun fetchAPI(onComplete: (() -> Unit)? = null) {
         setupProgress("Loading data")
         remoteConfig.fetchAndActivate().addOnCompleteListener(requireActivity()) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             endProgress()
             onComplete?.invoke()
         }
@@ -151,7 +157,10 @@ class AssociationProfile : Fragment() {
             dbRef.child("TodaGoDrive/Association/${account.uid}/document").setValue(null)
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) stRef.child("${account.uid}").delete()
-                    Global.user!!.document = null
+                    session.user.value?.let { user ->
+                        user.document = null
+                        session.setUser(user)
+                    }
                     user.document = null
                 }
         }
@@ -159,7 +168,10 @@ class AssociationProfile : Fragment() {
             .addOnCompleteListener {
                 auth.currentUser!!.email.let {
                     if (it != user.email) {
-                        Global.user!!.email = it
+                        session.user.value?.let { user ->
+                            user.email = it
+                            session.setUser(user)
+                        }
                         user.email = it
                         dbRef.child("TodaGoDrive/Association/${user.uid}/email").setValue(it)
                     }
@@ -169,7 +181,10 @@ class AssociationProfile : Fragment() {
                         dbRef.child("TodaGoDrive/Association/${user.uid}/emailVerified").setValue(it)
                             .addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
-                                    Global.user!!.emailVerified = true
+                                    session.user.value?.let { user ->
+                                        user.emailVerified = true
+                                        session.setUser(user)
+                                    }
                                     user.emailVerified = true
                                     if (account.verified == true) viewModel.setVerified(true)
                                     binding.emailVerified.text = if (user.emailVerified == true) "Verified" else "Unverified"
@@ -192,13 +207,13 @@ class AssociationProfile : Fragment() {
         setupProgress("Loading data")
         val start = account.route!!.substringBefore('-')
         val end = if (account.route!!.contains('-')) account.route!!.substringAfter('-') else null
-        RetrofitClient.geocodeService.reverseGeocode(start, Global.key!!)
+        RetrofitClient.geocodeService.reverseGeocode(start, session.key.value!!)
             .enqueue(object : Callback<GeocodeResponse> {
                 override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                     if (response.isSuccessful) {
                         val first = response.body()?.toLocalAddress()!!
                         if (end != null) {
-                            RetrofitClient.geocodeService.reverseGeocode(end, Global.key!!)
+                            RetrofitClient.geocodeService.reverseGeocode(end, session.key.value!!)
                                 .enqueue(object : Callback<GeocodeResponse> {
                                     override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                                         if (response.isSuccessful) {
@@ -249,7 +264,10 @@ class AssociationProfile : Fragment() {
     private fun editPhone() {
         phoneDialog = PhoneDialog(account.type!!) { phone ->
             snackBar(view, "Phone number has been changed")
-            Global.user!!.phone = phone
+            session.user.value?.let { user ->
+                user.phone = phone
+                session.setUser(user)
+            }
             user.phone = phone
             binding.phone.text = user.phone
             editAccount()
@@ -262,15 +280,18 @@ class AssociationProfile : Fragment() {
             "Are you sure you want to change your route?",
             "Change", "Cancel") { confirm ->
             if (confirm) {
-                routePickerDialog = RoutePickerDialog(Global.key!!) { start, startAddress, end, endAddress ->
+                routePickerDialog = RoutePickerDialog(session.key.value!!) { start, startAddress, end, endAddress ->
                     setupProgress("Saving changes")
                     dbRef.child("Account/TodaGoDrive/${account.uid}/route")
                         .setValue("${start.latitude},${start.longitude}${if (end != null) 
                             "-${end.latitude},${end.longitude}" else null}")
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
-                                Global.account!!.route = "${start.latitude},${start.longitude}${if (end != null)
-                                    "-${end.latitude},${end.longitude}" else null}"
+                                session.account.value?.let { acc ->
+                                    acc.route = "${start.latitude},${start.longitude}${if (end != null)
+                                        "-${end.latitude},${end.longitude}" else null}"
+                                    session.setAccount(acc)
+                                }
                                 account.route = "${start.latitude},${start.longitude}${if (end != null)
                                     "-${end.latitude},${end.longitude}" else null}"
                                 if (end != null) binding.route.text = "${startAddress.locality}-" +

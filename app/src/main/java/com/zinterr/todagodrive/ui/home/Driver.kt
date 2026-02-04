@@ -1,17 +1,27 @@
 package com.zinterr.todagodrive.ui.home
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
 import android.location.Location
 import android.os.*
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.*
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.*
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.Firebase
 import com.google.firebase.database.*
 import com.google.firebase.remoteconfig.*
+import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.adapter.RideAdapter
 import com.zinterr.todagodrive.databinding.DriverBinding
 import com.zinterr.todagodrive.model.*
@@ -37,10 +47,11 @@ class Driver : Fragment(), RideClickListener {
     private val currentViewViewModel: CurrentViewViewModel by activityViewModels()
     private val verifiedViewModel: VerifiedViewModel by activityViewModels()
     private val busyViewModel: BusyViewModel by viewModels()
-    private val rideViewModel: RideViewModel by viewModels()
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var availableRides: ArrayList<Ride>
+    private lateinit var rideViewModel: RideViewModel
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private var infoDialog: InfoDialog? = null
     private var runnable: Runnable? = null
@@ -64,9 +75,14 @@ class Driver : Fragment(), RideClickListener {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        setupAgreement()
         fetchAPI {
             loadData()
         }
+
+        binding.loading.progress.setIndicatorColor(
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         if (user.emailVerified == false || user.verified == false)
             verifiedViewModel.isVerified.observe(viewLifecycleOwner) { verified ->
@@ -98,8 +114,8 @@ class Driver : Fragment(), RideClickListener {
 
     override fun onStart() {
         super.onStart()
-        if (Global.driver?.active == true && Global.driver?.busy == false) start()
-        binding.btnStop.isEnabled = Global.driver?.busy == false
+        if (session.driver.value?.active == true && session.driver.value?.busy == false) start()
+        binding.btnStop.isEnabled = session.driver.value?.busy == false
     }
 
     override fun onResume() {
@@ -114,7 +130,13 @@ class Driver : Fragment(), RideClickListener {
     }
 
     private fun initialize() {
-        user = Global.user!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        rideViewModel = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[RideViewModel::class.java]
+        user = session.user.value!!
         dbRef = Firebase.database.reference
         remoteConfig = Firebase.remoteConfig
         availableRides = arrayListOf()
@@ -124,8 +146,8 @@ class Driver : Fragment(), RideClickListener {
         setupProgress("Loading data")
         remoteConfig.fetchAndActivate().addOnCompleteListener(requireActivity()) { task ->
             if (task.isSuccessful) {
-                Global.key = remoteConfig.getString("maps_api_key")
-                Global.fee = remoteConfig.getDouble("service_fee")
+                session.setKey(remoteConfig.getString("maps_api_key"))
+                session.setFee(remoteConfig.getDouble("service_fee"))
             }
             onComplete?.invoke()
         }
@@ -133,7 +155,7 @@ class Driver : Fragment(), RideClickListener {
 
     private fun loadData() {
         if (user.verified!!) {
-            if (Global.matrix == null) getMatrix()
+            if (session.matrix.value == null) getMatrix()
             checkActive {
                 checkActiveRide()
             }
@@ -146,7 +168,7 @@ class Driver : Fragment(), RideClickListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {
                         val matrix = snapshot.getValue(Matrix::class.java)
-                        Global.matrix = matrix
+                        session.setMatrix(matrix)
                     }
                 }
                 override fun onCancelled(error: DatabaseError) {}
@@ -155,13 +177,16 @@ class Driver : Fragment(), RideClickListener {
 
     private fun startRides() {
         setupProgress("Starting your day")
-        if (Global.driver == null) getDriver { start() } else start()
+        if (session.driver.value == null) getDriver { start() } else start()
     }
 
     private fun start() {
         startRideMonitoring()
-        Global.driver?.active = true
-        LocationService.startService(requireContext(), Global.city)
+        session.driver.value?.let { driver ->
+            driver.active = true
+            session.setDriver(driver)
+        }
+        LocationService.startService(requireContext(), session.city.value)
         endProgress()
         toggleButtons(true)
         busyViewModel.setBusy(true)
@@ -174,7 +199,7 @@ class Driver : Fragment(), RideClickListener {
         runnable = object : Runnable {
             override fun run() {
                 if (!isMonitoring) return
-                val ref = dbRef.child("Ride/${Global.city}/Rides")
+                val ref = dbRef.child("Ride/${session.city.value}/Rides")
                 ref.addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         availableRides.clear()
@@ -208,9 +233,9 @@ class Driver : Fragment(), RideClickListener {
 
     private fun isRideAvailable(ride: Ride): Boolean {
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-        if (Global.driver != null) {
-            if (Global.driver?.dateTime != null ) {
-                val driverDateTime = LocalDateTime.parse(Global.driver?.dateTime, formatter)
+        if (session.driver.value != null) {
+            if (session.driver.value?.dateTime != null ) {
+                val driverDateTime = LocalDateTime.parse(session.driver.value?.dateTime, formatter)
                 val driverTimeDiff = ChronoUnit.SECONDS.between(driverDateTime, LocalDateTime.now())
                 if (driverTimeDiff >= 30) return checkDistance(ride, formatter)
             } else return checkDistance(ride, formatter)
@@ -222,7 +247,7 @@ class Driver : Fragment(), RideClickListener {
         val dateTime = LocalDateTime.parse(ride.dateTime, formatter)
         val timeDiff = ChronoUnit.SECONDS.between(dateTime, LocalDateTime.now())
         val start = isClosest(ArrayList(ride.commuter!!.values)).start?.toLatLng()
-        val locDiff = distanceBetween(start!!, Global.current!!)
+        val locDiff = distanceBetween(start!!, session.current.value!!)
         val distance = listOf(1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144)
         if (timeDiff >= 300) return true
         for (i in 1..30) {
@@ -235,7 +260,7 @@ class Driver : Fragment(), RideClickListener {
     }
 
     private fun isClosest(commuters: List<Commuter>): Commuter= commuters.minBy {
-        distanceBetween(it.start!!.toLatLng(), Global.current!!)
+        distanceBetween(it.start!!.toLatLng(), session.current.value!!)
     }
 
     private fun distanceBetween(p1: LatLng, p2: LatLng): Float {
@@ -247,11 +272,16 @@ class Driver : Fragment(), RideClickListener {
 
     private fun stopRides() {
         setupProgress("Taking a break")
-        dbRef.child("Ride/${Global.city}/Driver/${user.uid}/active").setValue(false)
+        dbRef.child("Ride/${session.city.value}/Driver/${user.uid}/active").setValue(false)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    Global.driver?.active = false
-                    Global.driver?.busy = false
+                    session.driver.value?.let { driver ->
+                        driver.apply {
+                            active = false
+                            busy = false
+                        }
+                        session.setDriver(driver)
+                    }
                     LocationService.stopService()
                     toggleButtons(false)
                     binding.btnStop.isEnabled = true
@@ -267,8 +297,9 @@ class Driver : Fragment(), RideClickListener {
 
     private fun toggleButtons(isActive: Boolean) {
         binding.btnStart.visibility = if (isActive) View.GONE else View.VISIBLE
+        binding.terms.visibility = if (isActive) View.GONE else View.VISIBLE
         binding.activeLayout.visibility = if (isActive) View.VISIBLE else View.GONE
-        binding.btnStop.isEnabled = Global.driver?.busy == false
+        binding.btnStop.isEnabled = session.driver.value?.busy == false
     }
 
     private fun observeRide(ride: Ride?) {
@@ -280,7 +311,7 @@ class Driver : Fragment(), RideClickListener {
             startActivity(intent)
         } else if (currentRide != null) {
             currentRide = null
-            LocationService.startService(requireContext(), Global.city)
+            LocationService.startService(requireContext(), session.city.value)
             toggleButtons(true)
         }
     }
@@ -288,13 +319,13 @@ class Driver : Fragment(), RideClickListener {
     private fun checkActive(onComplete: (() -> Unit)? = null) {
         getLocation(requireContext()) { latLng ->
             if (latLng != null) {
-                Global.current = latLng
+                session.setCurrent(latLng)
                 getCity(user.location!!.toLatLng()) { success ->
                     if (success) {
                         getDriver { gotDriver ->
                             if (gotDriver) {
-                                if (Global.driver?.active == true || Global.driver?.busy == true) {
-                                    if (Global.driver?.busy == true) {
+                                if (session.driver.value?.active == true || session.driver.value?.busy == true) {
+                                    if (session.driver.value?.busy == true) {
                                         busyViewModel.setBusy(true)
                                         binding.btnStop.isEnabled = false
                                         onComplete?.invoke()
@@ -310,7 +341,7 @@ class Driver : Fragment(), RideClickListener {
     }
 
     private fun getRide(rideUID: String) {
-        dbRef.child("Ride/${Global.city}/Rides/$rideUID")
+        dbRef.child("Ride/${session.city.value}/Rides/$rideUID")
             .runTransaction(object : Transaction.Handler {
                 override fun doTransaction(currentData: MutableData): Transaction.Result {
                     if (!availableRides.any { it.uid == rideUID }) return Transaction.abort()
@@ -343,14 +374,14 @@ class Driver : Fragment(), RideClickListener {
                         }
                     }
                     currentData.child("driver").value = RideDriver(
-                        Global.user?.uid,
-                        Global.user?.name,
-                        Global.user?.plate,
-                        "%.2f".format(Global.user?.rating?.div(Global.user?.rates!!)),
-                        Global.current?.toLatLngString(),
-                        Global.user?.phone,
-                        Global.user?.profile,
-                        Global.matrix)
+                        session.user.value?.uid,
+                        session.user.value?.name,
+                        session.user.value?.plate,
+                        "%.2f".format(session.user.value?.rating?.div(session.user.value?.rates!!)),
+                        session.current.value?.toLatLngString(),
+                        session.user.value?.phone,
+                        session.user.value?.profile,
+                        session.matrix.value)
                     currentData.child("status").value = states?.joinToString("|")
                     return Transaction.success(currentData)
                 }
@@ -360,10 +391,13 @@ class Driver : Fragment(), RideClickListener {
                     if (error != null) Log.d("ERROR", error.message)
                     else if (committed) {
                         stopRideMonitoring()
-                        dbRef.child("Ride/${Global.city}/Driver/${Global.user?.uid}/busy").setValue(true)
-                        Global.driver?.busy = true
-                        rideViewModel.setRidePath(Global.city!!, rideUID)
-                        LocationService.startService(requireContext(), Global.city, rideUID)
+                        dbRef.child("Ride/${session.city.value}/Driver/${session.user.value?.uid}/busy").setValue(true)
+                        session.driver.value?.let { driver ->
+                            driver.busy = true
+                            session.setDriver(driver)
+                        }
+                        rideViewModel.setRidePath(session.city.value!!, rideUID)
+                        LocationService.startService(requireContext(), session.city.value, rideUID)
                     } else {
                         infoDialog = InfoDialog("Sorry. The ride has already been canceled or taken by another driver.")
                         infoDialog!!.show(childFragmentManager, "InfoDialog")
@@ -377,12 +411,12 @@ class Driver : Fragment(), RideClickListener {
             })
     }
 
-    private fun getServiceFee(commuter: Commuter, cost: Float): Int = ((cost * commuter.passenger!!) * (Global.fee!!/100))
+    private fun getServiceFee(commuter: Commuter, cost: Float): Int = ((cost * commuter.passenger!!) * (session.fee.value!!/100))
         .roundToInt().coerceAtLeast(1)
 
     private fun getRideCost(isDiscount: Boolean, solo: Boolean, passenger: Int, distance: Int): Pair<Float, Float> {
-        val perKM = if (isSpecial(solo, passenger, distance)) Global.matrix?.specialPerKM else Global.matrix?.perKm
-        val discount = if (isDiscount) Global.matrix?.discount else 0
+        val perKM = if (isSpecial(solo, passenger, distance)) session.matrix.value?.specialPerKM else session.matrix.value?.perKm
+        val discount = if (isDiscount) session.matrix.value?.discount else 0
         val discounted = ((distance/1000F) * perKM!!) * discount!!
         return Pair(((distance/1000F) * perKM).coerceAtLeast(if (isSpecial(solo, passenger, distance)) 100F else 40F),
             discounted)
@@ -391,13 +425,13 @@ class Driver : Fragment(), RideClickListener {
     private fun isSpecial(solo: Boolean, passenger: Int, distance: Int): Boolean = solo && passenger <= 2 && distance / 1000F > 1.5F
 
     private fun getDriver(onComplete: (Boolean) -> Unit) {
-        dbRef.child("Ride/${Global.city}/Driver/${user.uid}")
+        dbRef.child("Ride/${session.city.value}/Driver/${user.uid}")
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {
                         val driver = snapshot.getValue(RideDriver::class.java)
                         driver?.let {
-                            Global.driver = it
+                            session.setDriver(it)
                             onComplete(true)
                         }
                     } else setDriver { set -> onComplete(set) }
@@ -410,11 +444,11 @@ class Driver : Fragment(), RideClickListener {
     }
 
     private fun setDriver(onComplete: (Boolean) -> Unit) {
-        val driver = RideDriver(current = Global.current?.toLatLngString(), busy = false, active = false, assoc = user.assoc)
-        dbRef.child("Ride/${Global.city}/Driver/${user.uid}").setValue(driver)
+        val driver = RideDriver(current = session.current.value?.toLatLngString(), busy = false, active = false, assoc = user.assoc)
+        dbRef.child("Ride/${session.city.value}/Driver/${user.uid}").setValue(driver)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    Global.driver = driver
+                    session.setDriver(driver)
                     onComplete(true)
                 } else onComplete(false)
             }
@@ -422,26 +456,34 @@ class Driver : Fragment(), RideClickListener {
 
     // NEED A CHECK FOR COMPLETED RIDE IN CASE BOTH THE COMMUTER AND DRIVER GOES OFFLINE DURING THE RIDE
     private fun checkActiveRide() {
-        dbRef.child("Ride/${Global.city}/Rides").addListenerForSingleValueEvent(
+        dbRef.child("Ride/${session.city.value}/Rides").addListenerForSingleValueEvent(
             object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {
                         for (item in snapshot.children) {
                             val ride = item.getValue(Ride::class.java)!!
-                            if (ride.uid == null) dbRef.child("Ride/${Global.city}/Rides/${item.key}").setValue(null)
+                            if (ride.uid == null) dbRef.child("Ride/${session.city.value}/Rides/${item.key}").setValue(null)
                             else if (ride.driver != null && ride.driver.uid == user.uid) {
-                                Global.driver?.active = true
-                                Global.driver?.busy = true
-                                rideViewModel.setRidePath(Global.city!!, ride.uid)
+                                session.driver.value?.let { driver ->
+                                    driver.apply {
+                                        active = true
+                                        busy = true
+                                    }
+                                    session.setDriver(driver)
+                                }
+                                rideViewModel.setRidePath(session.city.value!!, ride.uid)
                                 LocationService.startService(requireContext(),
-                                    Global.city!!, ride.uid)
+                                    session.city.value!!, ride.uid)
                             }
                         }
                     } else {
                         infoDialog = InfoDialog("The ride you were in has been canceled.")
                         infoDialog!!.show(childFragmentManager, "InfoDialog")
-                        dbRef.child("Ride/${Global.city}/Driver/${user.uid}/busy").setValue(false)
-                        Global.driver?.busy = false
+                        dbRef.child("Ride/${session.city.value}/Driver/${user.uid}/busy").setValue(false)
+                        session.driver.value?.let { driver ->
+                            driver.busy = false
+                            session.setDriver(driver)
+                        }
                         toggleButtons(false)
                     }
                     endProgress()
@@ -454,11 +496,11 @@ class Driver : Fragment(), RideClickListener {
     }
 
     private fun getCity(latLng: LatLng, onComplete: (Boolean) -> Unit) {
-        RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), Global.key!!)
+        RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), session.key.value!!)
             .enqueue(object : Callback<GeocodeResponse> {
                 override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                     if (response.isSuccessful) {
-                        Global.city = response.body()?.toLocalAddress()!!.city
+                        session.setCity(response.body()?.toLocalAddress()!!.city)
                         onComplete(true)
                     } else onComplete(false)
                 }
@@ -466,6 +508,23 @@ class Driver : Fragment(), RideClickListener {
                     onComplete(false)
                 }
             })
+    }
+
+    private fun setupAgreement() {
+        val text = "By proceeding, I agree to TodaGo's Terms and Privacy Policies"
+        val ss = SpannableString(text)
+        val startT = text.indexOf("Terms")
+        val endT = startT + "Terms".length
+        val startP = text.indexOf("Privacy")
+        val endP = text.length
+        ss.setSpan(ForegroundColorSpan(ContextCompat.getColor(requireContext(), R.color.blue_dark)),
+            startT, endT, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        ss.setSpan(StyleSpan(Typeface.BOLD_ITALIC), startT, endT, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        ss.setSpan(ForegroundColorSpan(ContextCompat.getColor(requireContext(), R.color.blue_dark)),
+            startP, endP, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        ss.setSpan(StyleSpan(Typeface.BOLD_ITALIC), startP, endP, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        binding.terms.text = ss
+        binding.terms.highlightColor = Color.TRANSPARENT
     }
 
     private fun setupProgress(message: String) {

@@ -5,9 +5,13 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.*
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.*
 import android.text.*
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
 import android.util.Patterns
 import androidx.fragment.app.Fragment
 import android.view.*
@@ -15,9 +19,9 @@ import android.widget.*
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
-import androidx.core.content.edit
-import androidx.core.graphics.toColorInt
+import androidx.core.content.*
 import androidx.core.view.*
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.tasks.*
@@ -27,7 +31,9 @@ import com.google.firebase.database.*
 import com.google.firebase.remoteconfig.*
 import com.google.firebase.storage.*
 import com.zinterr.todagodrive.network.RetrofitClient
-import com.zinterr.todagodrive.*
+import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.MainActivity
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.SignupDriverBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.model.Global.createImageUri
@@ -38,6 +44,7 @@ import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
 import com.zinterr.todagodrive.model.Global.toLocalAddress
 import com.zinterr.todagodrive.ui.popup.PlateDialog
 import com.zinterr.todagodrive.util.*
+import com.zinterr.todagodrive.viewmodel.SessionViewModel
 import retrofit2.*
 import java.util.UUID
 
@@ -47,6 +54,7 @@ class SignupDriver : Fragment() {
     private lateinit var binding: SignupDriverBinding
     private lateinit var associations: ArrayList<Pair<String, String>>
     private lateinit var remoteConfig: FirebaseRemoteConfig
+    private lateinit var session: SessionViewModel
     private var localAddress: LocalAddress? = null
     private lateinit var dbRef: DatabaseReference
     private lateinit var stRef: StorageReference
@@ -68,7 +76,7 @@ class SignupDriver : Fragment() {
         if (result.resultCode == Activity.RESULT_OK) verify(result.data) }
     private val getImage = registerForActivityResult(ActivityResultContracts.TakePicture()) { if (it) setImage() }
     private val getLocation = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) { if (Global.key == null) fetchApi { showData(result.data)
+        if (result.resultCode == Activity.RESULT_OK) { if (session.key.value == null) fetchApi { showData(result.data)
         } else showData(result.data) } }
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) getImage() else requireCamera() }
@@ -103,6 +111,7 @@ class SignupDriver : Fragment() {
         emailListener()
         passwordListener()
         phoneListener()
+        setupAgreement()
         fetchApi {}
 
         binding.root.setOnTouchListener { _, event ->
@@ -117,8 +126,8 @@ class SignupDriver : Fragment() {
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         binding.btnBack.setOnClickListener {
             findNavController().popBackStack()
@@ -140,6 +149,10 @@ class SignupDriver : Fragment() {
             selectImage("PERMIT")
         }
 
+        binding.agree.setOnCheckedChangeListener { _, isChecked ->
+            binding.btnSign.isEnabled = isChecked
+        }
+
         binding.btnSign.setOnDebouncedClickListener {
             signUp()
         }
@@ -156,12 +169,15 @@ class SignupDriver : Fragment() {
         remoteConfig = Firebase.remoteConfig
         auth = Firebase.auth
         associations = arrayListOf()
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
     }
 
     private fun fetchApi(onComplete: () -> Unit) {
         setupProgress("")
         remoteConfig.fetchAndActivate().addOnCompleteListener(requireActivity()) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             endProgress()
             onComplete()
         }
@@ -198,10 +214,10 @@ class SignupDriver : Fragment() {
                                     "/Account/TodaGoDrive/$uid" to account,
                                     "/TodaGoDrive/Driver/$uid" to user)
                                 dbRef.updateChildren(updates).addOnSuccessListener {
-                                    Global.account = account
-                                    Global.user = user
-                                    Global.deviceID = getDeviceID()
-                                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(Global.deviceID)
+                                    session.setAccount(account)
+                                    session.setUser(user)
+                                    session.setDeviceID(getDeviceID())
+                                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(session.deviceID.value)
                                         .addOnCompleteListener { task ->
                                             if (task.isSuccessful) {
                                                 endProgress()
@@ -306,7 +322,7 @@ class SignupDriver : Fragment() {
         val latitude = data?.getDoubleExtra("LATITUDE", 0.0)
         val longitude = data?.getDoubleExtra("LONGITUDE", 0.0)
         latLng = LatLng(latitude!!, longitude!!)
-        RetrofitClient.geocodeService.reverseGeocode("$latitude,$longitude", Global.key!!)
+        RetrofitClient.geocodeService.reverseGeocode("$latitude,$longitude", session.key.value!!)
             .enqueue(object : Callback<GeocodeResponse> {
                 override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                     if (response.isSuccessful) {
@@ -391,7 +407,7 @@ class SignupDriver : Fragment() {
         val lng = latString.substringAfter(',').toDouble()
         val latLng = LatLng(lat, lng)
 
-        getAddressFromLocation(latLng, Global.key ?: "") { address ->
+        getAddressFromLocation(latLng, session.key.value ?: "") { address ->
             if (address?.city == localAddress?.city && assoc.verified == true) {
                 associations.add(Pair(assoc.name ?: "", assoc.uid ?: ""))
             }
@@ -475,6 +491,36 @@ class SignupDriver : Fragment() {
                 } else binding.phone.error = "Required"
             } else binding.phone.error = "Required"
         }
+    }
+
+    private fun setupAgreement() {
+        val text = "I agree to TodaGo's Terms and Privacy Policies"
+        val ss = SpannableString(text)
+        val startT = text.indexOf("Terms")
+        val endT = startT + "Terms".length
+        val startP = text.indexOf("Privacy")
+        val endP = text.length
+        ss.setSpan(object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                findNavController().navigate(SignupDriverDirections.actionSignupDriverToTerms())
+            }
+            override fun updateDrawState(ds: TextPaint) {
+                ds.color = ContextCompat.getColor(requireContext(), R.color.blue_dark)
+                ds.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
+            }
+        }, startT, endT, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        ss.setSpan(object : ClickableSpan() {
+            override fun onClick(widget: View) {
+                findNavController().navigate(SignupDriverDirections.actionSignupDriverToPolicy())
+            }
+            override fun updateDrawState(ds: TextPaint) {
+                ds.color = ContextCompat.getColor(requireContext(), R.color.blue_dark)
+                ds.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD_ITALIC)
+            }
+        }, startP, endP, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        binding.terms.text = ss
+        binding.terms.movementMethod = LinkMovementMethod.getInstance()
+        binding.terms.highlightColor = Color.TRANSPARENT
     }
 
     private fun setupProgress(message: String) {

@@ -12,15 +12,18 @@ import android.view.View
 import android.widget.ArrayAdapter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
-import androidx.core.graphics.toColorInt
 import androidx.fragment.app.DialogFragment
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.tasks.*
 import com.google.firebase.Firebase
 import com.google.firebase.auth.*
 import com.google.firebase.database.*
 import com.google.firebase.storage.*
+import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.DialogAssocPickerBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.model.Global.createImageUri
@@ -32,6 +35,7 @@ import com.zinterr.todagodrive.model.Global.toLatLngString
 import com.zinterr.todagodrive.model.Global.toLocalAddress
 import com.zinterr.todagodrive.network.RetrofitClient
 import com.zinterr.todagodrive.util.*
+import com.zinterr.todagodrive.viewmodel.SessionViewModel
 import retrofit2.*
 
 @SuppressLint("SetTextI18n")
@@ -43,6 +47,7 @@ class AssocPickerDialog(
     private lateinit var binding: DialogAssocPickerBinding
     private lateinit var associations: ArrayList<Pair<String, String>>
     private var localAddress: LocalAddress? = null
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private lateinit var stRef: StorageReference
     private lateinit var dialog: AlertDialog
@@ -72,12 +77,15 @@ class AssocPickerDialog(
         auth = Firebase.auth
         associations = arrayListOf()
         uid = auth.currentUser!!.uid
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
 
         addressListener()
 
         binding.loading.progress.setIndicatorColor(
-            "#15B34E".toColorInt(),
-            "#D9BD2D".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         binding.locationPicker.setOnDebouncedClickListener {
             getAddress()
@@ -204,7 +212,7 @@ class AssocPickerDialog(
                             val assoc = data.getValue(Account::class.java)!!
                             val latLng = assoc.route!!.substringBefore('-')
                             getAddressFromLocation(LatLng(latLng.substringBefore(',').toDouble(),
-                                latLng.substringAfter(',').toDouble()), Global.key!!
+                                latLng.substringAfter(',').toDouble()), session.key.value!!
                             ) { address ->
                                 if (address?.city.equals(localAddress?.city) && assoc.verified == true)
                                     associations.add(Pair("${assoc.name}", "${assoc.uid}"))

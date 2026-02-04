@@ -38,10 +38,34 @@
         android:id="@+id/signupAssociation"
         android:name="com.zinterr.todagodrive.ui.login.SignupAssociation"
         android:label="signup_association"
-        tools:layout="@layout/signup_association" />
+        tools:layout="@layout/signup_association" >
+        <action
+            android:id="@+id/action_signupAssociation_to_terms"
+            app:destination="@id/terms" />
+        <action
+            android:id="@+id/action_signupAssociation_to_policy"
+            app:destination="@id/policy" />
+    </fragment>
     <fragment
         android:id="@+id/signupDriver"
         android:name="com.zinterr.todagodrive.ui.login.SignupDriver"
         android:label="signup_driver"
-        tools:layout="@layout/signup_driver" />
+        tools:layout="@layout/signup_driver" >
+        <action
+            android:id="@+id/action_signupDriver_to_terms"
+            app:destination="@id/terms" />
+        <action
+            android:id="@+id/action_signupDriver_to_policy"
+            app:destination="@id/policy" />
+    </fragment>
+    <fragment
+        android:id="@+id/terms"
+        android:name="com.zinterr.todagodrive.ui.tcpp.Terms"
+        android:label="terms"
+        tools:layout="@layout/terms" />
+    <fragment
+        android:id="@+id/policy"
+        android:name="com.zinterr.todagodrive.ui.tcpp.Policy"
+        android:label="policy"
+        tools:layout="@layout/policy" />
 </navigation>

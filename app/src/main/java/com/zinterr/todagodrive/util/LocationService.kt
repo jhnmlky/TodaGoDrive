@@ -45,11 +45,11 @@ class LocationService: Service() {
     private var currentCity: String? = null
     private var driver: RideDriver? = null
     private var current: LatLng? = null
-    private val user = Global.user
-    private var key = Global.key
+    private var key: String? = null
 
     companion object {
         private var instance: LocationService? = null
+        lateinit var prefs: SharedPreferences
         private var appInForeground = true
         const val EXTRA_CITY = "CITY"
         const val EXTRA_RIDE_UID = "RIDE_UID"
@@ -60,6 +60,8 @@ class LocationService: Service() {
         }
 
         fun startService(context: Context, city: String? = null, rideUID: String? = null) {
+            prefs = context.getSharedPreferences("session_prefs", MODE_PRIVATE)
+            prefs.edit().putBoolean("appInForeground", true).apply()
             if (instance != null) instance?.stopLocationService()
             Handler(Looper.getMainLooper()).postDelayed({
                 val intent = Intent(context, LocationService::class.java).apply {
@@ -75,11 +77,14 @@ class LocationService: Service() {
         }
 
         fun setAppInForeground(foreground: Boolean) {
-            appInForeground = foreground
-            if (!appInForeground) instance?.let {
-                instance?.updateNotification()
-                it.currentCity?.let { city ->
-                    it.startLocationUpdates(city)
+            if (instance != null) {
+                appInForeground = foreground
+                prefs.edit().putBoolean("appInForeground", foreground).apply()
+                if (!appInForeground) instance?.let {
+                    instance?.updateNotification()
+                    it.currentCity?.let { city ->
+                        it.startLocationUpdates(city)
+                    }
                 }
             }
         }
@@ -89,7 +94,7 @@ class LocationService: Service() {
         super.onCreate()
         bind(this)
         createNotificationChannel()
-        fetchAPI {}
+        fetchAPI()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -180,7 +185,7 @@ class LocationService: Service() {
         val dateTime = LocalDateTime.parse(ride.dateTime, formatter)
         val timeDiff = ChronoUnit.SECONDS.between(dateTime, LocalDateTime.now())
         val start = isClosest(ArrayList(ride.commuter!!.values)).start?.toLatLng()
-        val locDiff = distanceBetween(start!!, Global.current!!)
+        val locDiff = distanceBetween(start!!, current!!)
         val distance = listOf(1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144)
         if (timeDiff >= 300) return true
         for (i in 1..30) {
@@ -234,12 +239,10 @@ class LocationService: Service() {
                     override fun onFailure(call: Call<GeocodeResponse?>, t: Throwable) {}
                 }
                 if (key == null) fetchAPI {
-                    geocodeCall = RetrofitClient.geocodeService.reverseGeocode(user?.location
-                        ?: latLng.toLatLngString(), key!!)
+                    geocodeCall = RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), key!!)
                     geocodeCall?.enqueue(geocodeResponse!!)
                 } else {
-                    geocodeCall = RetrofitClient.geocodeService.reverseGeocode(user?.location
-                        ?: latLng.toLatLngString(), key!!)
+                    geocodeCall = RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), key!!)
                     geocodeCall?.enqueue(geocodeResponse!!)
                 }
             }
@@ -320,7 +323,7 @@ class LocationService: Service() {
     }
 
     private fun setCommuterStatus(rideUID: String, commuterUID: String, status: String) {
-        dbRef.child("Ride/${Global.city}/Rides/$rideUID/commuter/$commuterUID/status")
+        dbRef.child("Ride/$currentCity/Rides/$rideUID/commuter/$commuterUID/status")
             .runTransaction(object : Transaction.Handler {
                 override fun doTransaction(currentData: MutableData): Transaction.Result {
                     currentData.getValue(String::class.java)?.contains(status)?.let {
@@ -341,7 +344,7 @@ class LocationService: Service() {
             val commuters = ride.commuter.values.filter { it.status!!.contains("ACTIVE") }
             val completed = ride.commuter.values.filter { it.status!!.contains("COMPLETED_COMMUTER") }
             if (commuters.isNotEmpty() && commuters.all { it.status!!.contains("DRIVING") } && ride.status?.contains("DRIVING") == false) {
-                dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/status")
+                dbRef.child("Ride/$currentCity/Rides/${ride.uid}/status")
                     .runTransaction(object : Transaction.Handler {
                         override fun doTransaction(currentData: MutableData): Transaction.Result {
                             currentData.getValue(String::class.java)?.contains("DRIVING")?.let {
@@ -355,14 +358,14 @@ class LocationService: Service() {
                 completed.forEach {
                     notifyRide("Commuter completed", "${it.name} has asked to complete their ride. Please confirm if this is correct.")
                     Handler(Looper.getMainLooper()).postDelayed({
-                        if (!appInForeground) dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/commuter/${it.uid}/status").setValue("COMPLETED")
+                        if (!appInForeground) dbRef.child("Ride/$currentCity/Rides/${ride.uid}/commuter/${it.uid}/status").setValue("COMPLETED")
                     }, 10000)
                 }
             } else if (ride.commuter.values.isNotEmpty() && commuters.isEmpty()) {
                 notifyRide("Ride completed", "Your ride has been completed.")
                 saveHistory(ride)
                 val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                dbRef.child("Ride/${Global.city}").updateChildren(hashMapOf<String, Any?>(
+                dbRef.child("Ride/$currentCity").updateChildren(hashMapOf<String, Any?>(
                     "/Driver/$uid/dateTime" to time,
                     "/Driver/$uid/busy" to false,
                     "/Rides/${ride.uid}" to null)).addOnCompleteListener { task ->
@@ -381,7 +384,7 @@ class LocationService: Service() {
     }
 
     private fun resetDriver() {
-        if (rideRef != null && rideEventListener != null) dbRef.child("Ride/${Global.city}/Driver/$uid/busy").setValue(false)
+        if (rideRef != null && rideEventListener != null) dbRef.child("Ride/$currentCity/Driver/$uid/busy").setValue(false)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     removeRideListener()
@@ -416,7 +419,7 @@ class LocationService: Service() {
             })
     }
 
-    private fun fetchAPI(onComplete: (() -> Unit)?) {
+    private fun fetchAPI(onComplete: (() -> Unit)? = null) {
         remoteConfig.fetchAndActivate().addOnCompleteListener { task ->
             if (task.isSuccessful) key = remoteConfig.getString("maps_api_key")
             onComplete?.invoke()

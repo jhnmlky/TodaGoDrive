@@ -27,19 +27,9 @@ object Global {
 
     const val VERSION = "1.0.0"
     private var lastClickTime = 0L
-    var profiledUser: User? = null
-    var account: Account? = null
-    var navPosition: Int = 0
-    var user: User? = null
-    var city: String? = null
     var historyPrev: String? = null
-    var key: String? = null
-    var current: LatLng? = null
+    var navPosition: Int = 0
     var app: App? = null
-    var matrix: Matrix? = null
-    var driver: RideDriver? = null
-    var deviceID: String? = null
-    var fee: Double? = null
     var tabPosition: Int = 0
     var searching: Boolean = false
     var activeUser: RideDriver? = null

@@ -10,9 +10,11 @@ import android.widget.*
 import androidx.activity.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.*
 import androidx.core.net.toUri
 import androidx.core.view.*
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.maps.*
 import com.google.android.gms.maps.model.*
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -26,6 +28,7 @@ import com.squareup.picasso.Picasso
 import com.zinterr.todagodrive.databinding.ActivityRideBinding
 import com.zinterr.todagodrive.ui.popup.*
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.adapter.PassengerAdapter
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
 import com.zinterr.todagodrive.model.Global.toLatLng
@@ -41,13 +44,14 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
 
     private lateinit var binding: ActivityRideBinding
     private var locationEventListener: ValueEventListener? = null
-    private val rideViewModel: RideViewModel by viewModels()
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private lateinit var polylines: ArrayList<Polyline>
     private var locationRef: DatabaseReference? = null
+    private lateinit var rideViewModel: RideViewModel
     private var confirmDialog: ConfirmDialog? = null
     private var bounds: LatLngBounds.Builder? = null
     private lateinit var markers: ArrayList<Marker>
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private var infoDialog: InfoDialog? = null
     private lateinit var account: Account
@@ -82,8 +86,8 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(this, R.color.blue_dark),
+            ContextCompat.getColor(this, R.color.red))
 
         binding.rvPassenger.apply {
             setHasFixedSize(true)
@@ -147,12 +151,18 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
     private fun initialize() {
         remoteConfig = Firebase.remoteConfig
         dbRef = Firebase.database.reference
-        account = Global.account!!
-        user = Global.user!!
+        session = ViewModelProvider((application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((application as TodaGoDrive)))[SessionViewModel::class.java]
+        account = session.account.value!!
+        user = session.user.value!!
         markers = arrayListOf()
         polylines = arrayListOf()
         isView = intent.getBooleanExtra("VIEW", false)
         if (isView == true) location = Global.activeUser?.current?.toLatLng()
+        rideViewModel = ViewModelProvider((application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((application as TodaGoDrive)))[RideViewModel::class.java]
     }
 
     private fun observeRide(ride: Ride?) {
@@ -171,9 +181,12 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
                     finish()
                 }
                 infoDialog!!.show(supportFragmentManager, "InfoDialog")
-                dbRef.child("Ride/${Global.city}/Driver/${user.uid}/busy").setValue(false)
+                dbRef.child("Ride/${session.city.value}/Driver/${user.uid}/busy").setValue(false)
                     .addOnCompleteListener { task ->
-                        if (task.isSuccessful) Global.driver?.busy = false
+                        if (task.isSuccessful) session.driver.value?.let { driver ->
+                            driver.busy = false
+                            session.setDriver(driver)
+                        }
                     }
             } else {
                 infoDialog = InfoDialog("You have delivered all your passenger. Thank you.") {
@@ -188,7 +201,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
     private fun startRide() {
         setupProgress("Processing")
         currentRide?.let { ride ->
-            dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/status").setValue("APPROACHING")
+            dbRef.child("Ride/${session.city.value}/Rides/${ride.uid}/status").setValue("APPROACHING")
                 .addOnCompleteListener { task ->
                     if (task.isSuccessful) {
                         binding.btnStart.visibility = View.GONE
@@ -217,7 +230,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
         ride.commuter!!.values.forEach {
             updates["/${it.uid}/status"] = "COMPLETED"
         }
-        dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/commuter").updateChildren(updates)
+        dbRef.child("Ride/${session.city.value}/Rides/${ride.uid}/commuter").updateChildren(updates)
             .addOnCompleteListener { task ->
                 if (task.exception != null) snackBar(binding.root, "Error: ${task.exception!!.message}")
                 endProgress()
@@ -248,10 +261,13 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
             updates["/Rides/${ride.uid}/commuter/${it.uid}/status"] = if (it.status?.contains("COMMUTER") == true)
                 "COMPLETED_COMMUTER" else if (it.status?.contains("COMPLETED") == true) "COMPLETED" else "ACTIVE"
         }
-        dbRef.child("Ride/${Global.city}").updateChildren(updates)
+        dbRef.child("Ride/${session.city.value}").updateChildren(updates)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
-                    Global.driver?.busy = false
+                    session.driver.value?.let { driver ->
+                        driver.busy = false
+                        session.setDriver(driver)
+                    }
                     rideViewModel.resetRide()
                     if (penalty) {
                         dbRef.child("TodaGoDrive/Driver/${user.uid}").updateChildren(
@@ -260,9 +276,12 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
                             .addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
                                     snackBar(binding.root, "You have canceled the ride")
-                                    Global.user?.apply {
-                                        rating = rating?.plus(2F)
-                                        rates = rates?.plus(1)
+                                    session.user.value?.let { user ->
+                                        user.apply {
+                                            rating = (rating ?: 0F) + 2F
+                                            rates = (rates ?: 0) + 1
+                                        }
+                                        session.setUser(user)
                                     }
                                     finish()
                                 }
@@ -319,7 +338,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
     }
 
     private fun setCommuterStatus(rideUID: String, commuterUID: String, status: String) {
-        dbRef.child("Ride/${Global.city}/Rides/$rideUID/commuter/$commuterUID/status")
+        dbRef.child("Ride/${session.city.value}/Rides/$rideUID/commuter/$commuterUID/status")
             .runTransaction(object : Transaction.Handler {
                 override fun doTransaction(currentData: MutableData): Transaction.Result {
                     currentData.getValue(String::class.java)?.contains(status)?.let {
@@ -351,7 +370,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
             val commuters = ride.commuter.values.filter { it.status!!.contains("ACTIVE") }
             val completed = ride.commuter.values.filter { it.status!!.contains("COMPLETED_COMMUTER") }
             if (commuters.isNotEmpty() && commuters.all { it.status!!.contains("DRIVING") } && ride.status?.contains("DRIVING") == false) {
-                dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/status")
+                dbRef.child("Ride/${session.city.value}/Rides/${ride.uid}/status")
                     .runTransaction(object : Transaction.Handler {
                         override fun doTransaction(currentData: MutableData): Transaction.Result {
                             currentData.getValue(String::class.java)?.contains("DRIVING")?.let {
@@ -373,7 +392,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
                     confirmDialog = ConfirmDialog("Commuter completed",
                         "${it.name} has asked to complete their ride with you. Please confirm if this is correct.",
                         "Yes", "No", true) { confirmed ->
-                        dbRef.child("Ride/${Global.city}/Rides/${ride.uid}/commuter/${it.uid}/status")
+                        dbRef.child("Ride/${session.city.value}/Rides/${ride.uid}/commuter/${it.uid}/status")
                             .setValue(if (confirmed) "COMPLETED" else state?.joinToString("|") ?: "")
                     }
                     confirmDialog!!.show(supportFragmentManager, "ConfirmDialog")
@@ -382,7 +401,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
                 canceled = true
                 saveHistory(ride)
                 val time = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                dbRef.child("Ride/${Global.city}").updateChildren(hashMapOf<String, Any?>(
+                dbRef.child("Ride/${session.city.value}").updateChildren(hashMapOf<String, Any?>(
                     "/Driver/${user.uid}/dateTime" to time,
                     "/Driver/${user.uid}/busy" to false,
                     "/Rides/${ride.uid}" to null)).addOnCompleteListener {
@@ -390,9 +409,12 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
                             mapOf("/rating" to user.rating?.plus(5F),
                                 "/rates" to user.rates?.plus(1)))
                         rideViewModel.resetRide()
-                        Global.driver?.apply {
-                            dateTime = time
-                            busy = false
+                        session.driver.value?.let { driver ->
+                            driver.apply {
+                                dateTime = time
+                                busy = false
+                            }
+                            session.setDriver(driver)
                         }
                     }
             }
@@ -409,7 +431,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
         val pickups = commuters.map { if (it.status!!.contains("DRIVING")) it.current!! else it.start!! }
         val drops = commuters.map { it.end!! }
         val destinations = pickups.joinToString("|")
-        RetrofitClient.distanceMatrixService.getDistanceMatrix(origin, destinations, Global.key!!)
+        RetrofitClient.distanceMatrixService.getDistanceMatrix(origin, destinations, session.key.value!!)
             .enqueue(object : Callback<DistanceMatrixResponse> {
                 override fun onResponse(
                     call: Call<DistanceMatrixResponse>,
@@ -495,7 +517,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
     private fun fetchAPI(onComplete: (() -> Unit)? = null) {
         setupProgress("Loading data")
         remoteConfig.fetchAndActivate().addOnCompleteListener(this) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             endProgress()
             onComplete?.invoke()
         }
@@ -507,7 +529,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
     }
 
     private fun displayRoute(origin: String, destination: String, waypoints: String? = null) {
-        RetrofitClient.directionsService.getDirections(origin, destination, Global.key!!, "$waypoints")
+        RetrofitClient.directionsService.getDirections(origin, destination, session.key.value!!, "$waypoints")
             .enqueue(object : Callback<DirectionsResponse> {
                 override fun onResponse(call: Call<DirectionsResponse>, response: Response<DirectionsResponse>) {
                     if (response.isSuccessful) {
@@ -609,7 +631,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
         binding.camera.layoutParams = layoutParams
         binding.camera.translationY = 0f
         if (Global.activeUser?.busy == true) {
-            locationRef = dbRef.child("Ride/${Global.city}/Rides/")
+            locationRef = dbRef.child("Ride/${session.city.value}/Rides/")
             locationEventListener = object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {
@@ -629,7 +651,7 @@ class RideActivity : AppCompatActivity(), OnMapReadyCallback, PassengerCallClick
             }
             locationRef?.orderByChild("driver")?.addValueEventListener(locationEventListener!!)
         } else {
-            locationRef = dbRef.child("Ride/${Global.city}/Driver/${Global.activeUser?.uid}")
+            locationRef = dbRef.child("Ride/${session.city.value}/Driver/${Global.activeUser?.uid}")
             locationEventListener = object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (snapshot.exists()) {

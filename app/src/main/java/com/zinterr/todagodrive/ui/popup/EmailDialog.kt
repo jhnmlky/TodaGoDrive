@@ -5,10 +5,11 @@ import android.app.*
 import android.os.Bundle
 import android.util.Patterns
 import android.view.*
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.DialogFragment
 import com.google.firebase.auth.*
-import androidx.core.graphics.toColorInt
 import androidx.core.graphics.drawable.toDrawable
+import com.zinterr.todagodrive.R
 import com.zinterr.todagodrive.databinding.DialogEmailBinding
 import com.zinterr.todagodrive.model.Global.hideKeyboard
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
@@ -38,8 +39,8 @@ class EmailDialog(
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#15B34E".toColorInt(),
-            "#D9BD2D".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         emailListener()
         passwordListener()

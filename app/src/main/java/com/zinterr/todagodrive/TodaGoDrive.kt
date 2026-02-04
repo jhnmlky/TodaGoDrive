@@ -4,10 +4,16 @@ import android.app.Application
 import androidx.lifecycle.*
 import com.zinterr.todagodrive.util.LocationService
 
-class TodaGoDrive : Application(), DefaultLifecycleObserver {
+class TodaGoDrive : Application(), ViewModelStoreOwner, DefaultLifecycleObserver {
+
+    private val appViewModelStore = ViewModelStore()
+
+    override val viewModelStore: ViewModelStore
+        get() = appViewModelStore
 
     override fun onCreate() {
         super<Application>.onCreate()
+        getSharedPreferences("prefs", MODE_PRIVATE)
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
     }
 
@@ -17,5 +23,10 @@ class TodaGoDrive : Application(), DefaultLifecycleObserver {
 
     override fun onStop(owner: LifecycleOwner) {
         LocationService.setAppInForeground(false)
+    }
+
+    override fun onTerminate() {
+        super.onTerminate()
+        appViewModelStore.clear()
     }
 }

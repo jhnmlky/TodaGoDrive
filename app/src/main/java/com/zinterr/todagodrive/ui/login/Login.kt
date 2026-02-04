@@ -13,15 +13,18 @@ import androidx.fragment.app.Fragment
 import android.view.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
-import androidx.core.graphics.toColorInt
+import androidx.core.content.*
 import androidx.core.net.toUri
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.*
 import com.google.firebase.auth.auth
 import com.google.firebase.database.*
 import com.google.firebase.remoteconfig.*
+import com.zinterr.todagodrive.R
 import com.zinterr.todagodrive.MainActivity
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.LoginBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.model.Global.checkGPS
@@ -30,8 +33,8 @@ import com.zinterr.todagodrive.model.Global.isNotificationDisabled
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
 import com.zinterr.todagodrive.ui.popup.ConfirmDialog
 import com.zinterr.todagodrive.util.*
+import com.zinterr.todagodrive.viewmodel.SessionViewModel
 import java.util.UUID
-import androidx.core.content.edit
 
 @SuppressLint("ClickableViewAccessibility")
 class Login : Fragment() {
@@ -39,6 +42,7 @@ class Login : Fragment() {
     private lateinit var binding: LoginBinding
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private var confirmDialog: ConfirmDialog? = null
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private lateinit var auth: FirebaseAuth
     private var isAppValid: Boolean? = null
@@ -90,8 +94,8 @@ class Login : Fragment() {
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         emailListener()
         passwordListener()
@@ -120,7 +124,7 @@ class Login : Fragment() {
                 }
             } else AlertDialog.Builder(requireContext())
                 .setTitle("APP DISCONTINUED")
-                .setMessage("Sorry. This application has been discontinued by the administrator.")
+                .setMessage("Sorry. This application version has been discontinued by the administrator. ")
                 .setPositiveButton("Understood") { _, _ ->
                     requireActivity().finish()
                 }
@@ -137,6 +141,9 @@ class Login : Fragment() {
         dbRef = Firebase.database.reference
         remoteConfig = Firebase.remoteConfig
         auth = Firebase.auth
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
     }
 
     private fun login() {
@@ -154,10 +161,10 @@ class Login : Fragment() {
                         getAccount(task.result.user!!.uid) { account ->
                             if (account != null) getUser(account) { user ->
                                 if (user != null) {
-                                    Global.account = account
-                                    Global.user = user
-                                    Global.deviceID = getDeviceID()
-                                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(Global.deviceID)
+                                    session.setAccount(account)
+                                    session.setUser(user)
+                                    session.setDeviceID(getDeviceID())
+                                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(session.deviceID.value)
                                         .addOnCompleteListener { task ->
                                             if (task.isSuccessful) {
                                                 binding.loading.container.visibility = View.GONE
@@ -282,10 +289,10 @@ class Login : Fragment() {
             setupProgress("Logging in")
             getAccount(auth.currentUser?.uid!!) { account ->
                 if (account != null) getUser(account) { user ->
-                    Global.account = account
-                    Global.user = user
-                    Global.deviceID = getDeviceID()
-                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(Global.deviceID)
+                    session.setAccount(account)
+                    session.setUser(user)
+                    session.setDeviceID(getDeviceID())
+                    dbRef.child("TodaGoDrive/${account.type}/${account.uid}/sessionID").setValue(session.deviceID.value)
                         .addOnCompleteListener { task ->
                             if (task.isSuccessful) {
                                 binding.loading.container.visibility = View.GONE

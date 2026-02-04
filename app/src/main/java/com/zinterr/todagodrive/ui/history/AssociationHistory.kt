@@ -4,12 +4,14 @@ import android.annotation.SuppressLint
 import android.os.*
 import androidx.fragment.app.Fragment
 import android.view.*
-import androidx.core.graphics.toColorInt
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.firebase.Firebase
 import com.google.firebase.database.*
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.adapter.HistoryAdapter
 import com.zinterr.todagodrive.databinding.AssociationHistoryBinding
 import com.zinterr.todagodrive.model.*
@@ -17,6 +19,7 @@ import com.zinterr.todagodrive.ui.home.Home
 import com.zinterr.todagodrive.util.*
 import com.zinterr.todagodrive.viewholder.HistoryViewHolder
 import com.zinterr.todagodrive.viewmodel.CurrentViewViewModel
+import com.zinterr.todagodrive.viewmodel.SessionViewModel
 import kotlin.getValue
 
 @SuppressLint("SetTextI18n")
@@ -25,6 +28,7 @@ class AssociationHistory : Fragment(), HistoryClickListener {
     private lateinit var binding: AssociationHistoryBinding
     private val currentViewViewModel: CurrentViewViewModel by activityViewModels()
     private lateinit var historyAdapter: HistoryAdapter
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private lateinit var account: Account
 
@@ -45,15 +49,15 @@ class AssociationHistory : Fragment(), HistoryClickListener {
         super.onViewCreated(view, savedInstanceState)
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         binding.rvHistory.apply {
             setHasFixedSize(true)
             layoutManager = LinearLayoutManager(activity)
         }
 
-        binding.swipeRefresh.setColorSchemeResources(R.color.blue, R.color.red)
+        binding.swipeRefresh.setColorSchemeResources(R.color.blue_dark, R.color.red)
         binding.swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.progress)
 
         binding.swipeRefresh.setOnRefreshListener {
@@ -72,7 +76,10 @@ class AssociationHistory : Fragment(), HistoryClickListener {
     }
 
     private fun initialize() {
-        account = Global.account!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        account = session.account.value!!
         dbRef = Firebase.database.reference
     }
 

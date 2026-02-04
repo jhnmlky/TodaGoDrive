@@ -9,15 +9,17 @@ import androidx.activity.OnBackPressedCallback
 import androidx.core.content.ContextCompat
 import androidx.core.view.*
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.tabs.TabLayout
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.adapter.PageAdapter
 import com.zinterr.todagodrive.databinding.HomeBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.ui.history.*
 import com.zinterr.todagodrive.ui.profile.*
 import com.zinterr.todagodrive.util.*
-import com.zinterr.todagodrive.viewmodel.CurrentViewViewModel
+import com.zinterr.todagodrive.viewmodel.*
 
 // ADD ACCOUNT PAGE FOR DRIVER BALANCE INFO AND RECHARGING
 @SuppressLint("SetTextI18n")
@@ -25,6 +27,7 @@ class Home : Fragment() {
 
     private lateinit var binding: HomeBinding
     private val currentViewViewModel: CurrentViewViewModel by activityViewModels()
+    private lateinit var session: SessionViewModel
     private lateinit var history: Fragment
     private lateinit var profile: Fragment
     private lateinit var account: Account
@@ -49,7 +52,7 @@ class Home : Fragment() {
         ViewCompat.setOnApplyWindowInsetsListener(binding.home) { _, insets ->
             val navBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             val params = binding.bottomNavigation.layoutParams as ViewGroup.LayoutParams
-            params.height = 130 + navBars.bottom
+            params.height = 170 + navBars.bottom
             navBarBottom = navBars.bottom
             binding.bottomNavigation.layoutParams = params
             insets
@@ -90,13 +93,11 @@ class Home : Fragment() {
         callbackTrue.remove()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        Global.account = null
-    }
-
     private fun initialize() {
-        account = Global.account!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        account = session.account.value!!
     }
 
     private fun setupNavigation() {
@@ -112,7 +113,7 @@ class Home : Fragment() {
             val tab = binding.bottomNavigation.newTab()
             binding.bottomNavigation.addTab(tab)
             val view = LayoutInflater.from(requireContext()).inflate(R.layout.tab_item, binding.root, false)
-            view.setPadding(0, 0, 0, navBarBottom + 15)
+            view.setPadding(0, 0, 0, navBarBottom + 50)
             val icon = view.findViewById<ImageView>(R.id.tab_icon)
             val text = view.findViewById<TextView>(R.id.tab_text)
             icon.setImageResource(icons[i])

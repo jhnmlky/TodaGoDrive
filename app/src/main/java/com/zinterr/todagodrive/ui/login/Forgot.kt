@@ -5,10 +5,11 @@ import android.os.Bundle
 import android.util.Patterns
 import androidx.fragment.app.Fragment
 import android.view.*
-import androidx.core.graphics.toColorInt
+import androidx.core.content.ContextCompat
 import androidx.navigation.fragment.findNavController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.*
+import com.zinterr.todagodrive.R
 import com.zinterr.todagodrive.databinding.ForgotBinding
 import com.zinterr.todagodrive.model.Global.hideKeyboard
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
@@ -44,8 +45,8 @@ class Forgot : Fragment() {
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         binding.btnBack.setOnClickListener {
             findNavController().popBackStack()

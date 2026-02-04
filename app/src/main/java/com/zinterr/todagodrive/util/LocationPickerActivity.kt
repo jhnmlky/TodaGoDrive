@@ -11,6 +11,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.view.*
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.maps.*
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.libraries.places.api.Places
@@ -19,12 +20,13 @@ import com.google.android.libraries.places.api.net.*
 import com.google.firebase.Firebase
 import com.google.firebase.remoteconfig.*
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.ActivityLocationPickerBinding
-import com.zinterr.todagodrive.model.Global
 import com.zinterr.todagodrive.model.Global.getLocation
 import com.zinterr.todagodrive.model.Global.hideKeyboard
 import com.zinterr.todagodrive.model.Global.setOnDebouncedClickListener
 import com.zinterr.todagodrive.model.Global.toLatLngString
+import com.zinterr.todagodrive.viewmodel.SessionViewModel
 
 class LocationPickerActivity : AppCompatActivity(), OnMapReadyCallback {
 
@@ -32,6 +34,7 @@ class LocationPickerActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var predictions: ArrayList<AutocompletePrediction>
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private lateinit var searchBar: AutoCompleteTextView
+    private lateinit var session: SessionViewModel
     private lateinit var places: PlacesClient
     private lateinit var map: GoogleMap
     private var current: String? = null
@@ -104,8 +107,11 @@ class LocationPickerActivity : AppCompatActivity(), OnMapReadyCallback {
         predictions = arrayListOf()
         val mapFragment = supportFragmentManager.findFragmentById(R.id.map_picker) as SupportMapFragment
         mapFragment.getMapAsync(this)
+        session = ViewModelProvider((application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((application as TodaGoDrive)))[SessionViewModel::class.java]
         fetchApi {
-            if (!Places.isInitialized()) Places.initializeWithNewPlacesApiEnabled(applicationContext, Global.key!!)
+            if (!Places.isInitialized()) Places.initializeWithNewPlacesApiEnabled(applicationContext, session.key.value!!)
             places = Places.createClient(this)
             setupButtons()
         }
@@ -113,7 +119,7 @@ class LocationPickerActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private fun fetchApi(onComplete: () -> Unit) {
         remoteConfig.fetchAndActivate().addOnCompleteListener(this) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             onComplete()
         }
     }

@@ -6,7 +6,9 @@ import android.os.*
 import androidx.fragment.app.Fragment
 import android.view.*
 import android.widget.SearchView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.*
 import com.google.android.gms.maps.model.LatLng
@@ -17,6 +19,7 @@ import com.google.firebase.database.*
 import com.google.firebase.remoteconfig.FirebaseRemoteConfig
 import com.google.firebase.remoteconfig.remoteConfig
 import com.zinterr.todagodrive.R
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.adapter.*
 import com.zinterr.todagodrive.databinding.AssociationBinding
 import com.zinterr.todagodrive.model.*
@@ -40,6 +43,7 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private lateinit var filteredDriver: ArrayList<User>
     private lateinit var active: ArrayList<RideDriver>
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private lateinit var drivers: ArrayList<User>
     private lateinit var rvDrivers: RecyclerView
@@ -74,6 +78,10 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
         }
         setupTabs()
 
+        binding.loading.progress.setIndicatorColor(
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
+
         if (user.emailVerified == false || account.verified == false)
             verifiedViewModel.isVerified.observe(viewLifecycleOwner) { verified ->
                 if (verified) binding.restrictUnverified.visibility = View.GONE
@@ -90,7 +98,7 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
             layoutManager = LinearLayoutManager(activity)
         }
 
-        binding.swipeRefresh.setColorSchemeResources(R.color.blue, R.color.red)
+        binding.swipeRefresh.setColorSchemeResources(R.color.blue_dark, R.color.red)
         binding.swipeRefresh.setProgressBackgroundColorSchemeResource(R.color.progress)
 
         binding.swipeRefresh.setOnRefreshListener {
@@ -113,7 +121,7 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
     }
 
     override fun onDriverClick(user: User) {
-        Global.profiledUser = user
+        session.setProfiledUser(user)
         findNavController().navigate(HomeDirections.actionHome2ToDriverProfile())
     }
 
@@ -129,8 +137,11 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
         auth = Firebase.auth
         dbRef = Firebase.database.reference
         remoteConfig = Firebase.remoteConfig
-        user = Global.user!!
-        account = Global.account!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        user = session.user.value!!
+        account = session.account.value!!
         drivers = arrayListOf()
         active = arrayListOf()
         filteredDriver = arrayListOf()
@@ -140,7 +151,7 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
     private fun fetchAPI(onComplete: (() -> Unit)? = null) {
         setupProgress()
         remoteConfig.fetchAndActivate().addOnCompleteListener(requireActivity()) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             onComplete?.invoke()
         }
     }
@@ -183,11 +194,11 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
     }
 
     private fun getCity(latLng: LatLng, onComplete: (Boolean) -> Unit) {
-        RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), Global.key!!)
+        RetrofitClient.geocodeService.reverseGeocode(latLng.toLatLngString(), session.key.value!!)
             .enqueue(object : Callback<GeocodeResponse> {
                 override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                     if (response.isSuccessful) {
-                        Global.city = response.body()?.toLocalAddress()!!.city
+                        session.setCity(response.body()?.toLocalAddress()!!.city)
                         onComplete(true)
                     } else onComplete(false)
                 }
@@ -198,7 +209,7 @@ class Association : Fragment(), DriverClickListener, ActiveClickListener {
     }
 
     private fun fetchActive(onComplete: () -> Unit) {
-        dbRef.child("/Ride/${Global.city}/Driver").orderByChild("assoc").equalTo(user.uid)
+        dbRef.child("/Ride/${session.city.value}/Driver").orderByChild("assoc").equalTo(user.uid)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     active.clear()

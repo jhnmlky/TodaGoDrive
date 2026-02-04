@@ -8,9 +8,10 @@ import androidx.fragment.app.Fragment
 import android.view.*
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.graphics.toColorInt
+import androidx.core.content.ContextCompat
 import androidx.core.view.*
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
 import com.google.firebase.Firebase
 import com.google.firebase.auth.*
@@ -20,6 +21,7 @@ import com.google.firebase.storage.*
 import com.squareup.picasso.Picasso
 import com.zinterr.todagodrive.R
 import com.zinterr.todagodrive.LoginActivity
+import com.zinterr.todagodrive.TodaGoDrive
 import com.zinterr.todagodrive.databinding.DriverProfileBinding
 import com.zinterr.todagodrive.model.*
 import com.zinterr.todagodrive.model.Global.getUriBytes
@@ -44,6 +46,7 @@ class DriverProfile() : Fragment() {
     private lateinit var remoteConfig: FirebaseRemoteConfig
     private var passwordDialog: PasswordDialog? = null
     private var confirmDialog: ConfirmDialog? = null
+    private lateinit var session: SessionViewModel
     private lateinit var dbRef: DatabaseReference
     private lateinit var stRef: StorageReference
     private var emailDialog: EmailDialog? = null
@@ -84,8 +87,8 @@ class DriverProfile() : Fragment() {
         }
 
         binding.loading.progress.setIndicatorColor(
-            "#1561FF".toColorInt(),
-            "#FFBF0D3E".toColorInt())
+            ContextCompat.getColor(requireContext(), R.color.blue_dark),
+            ContextCompat.getColor(requireContext(), R.color.red))
 
         if (isAssoc) {
             binding.headerTitle.visibility = View.VISIBLE
@@ -155,7 +158,7 @@ class DriverProfile() : Fragment() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (Global.profiledUser != null) Global.profiledUser = null
+        if (session.profiledUser.value != null) session.setProfiledUser(null)
         if (confirmDialog != null) if (confirmDialog!!.isAdded) confirmDialog!!.dismiss()
         if (passwordDialog != null) if (passwordDialog!!.isAdded) passwordDialog!!.dismiss()
         if (emailDialog != null) if (emailDialog!!.isAdded) emailDialog!!.dismiss()
@@ -169,15 +172,18 @@ class DriverProfile() : Fragment() {
         dbRef = Firebase.database.reference
         remoteConfig = Firebase.remoteConfig
         stRef = Firebase.storage.reference
-        isAssoc = Global.profiledUser != null
-        account = Global.account!!
-        user = if (isAssoc) Global.profiledUser!! else Global.user!!
+        session = ViewModelProvider((requireActivity().application as TodaGoDrive),
+            ViewModelProvider.AndroidViewModelFactory
+                .getInstance((requireActivity().application as TodaGoDrive)))[SessionViewModel::class.java]
+        isAssoc = session.profiledUser.value != null
+        account = session.account.value!!
+        user = if (isAssoc) session.profiledUser.value!! else session.user.value!!
     }
 
     private fun fetchAPI(onComplete: (() -> Unit)? = null) {
         setupProgress("Loading data")
         remoteConfig.fetchAndActivate().addOnCompleteListener(requireActivity()) { task ->
-            if (task.isSuccessful) Global.key = remoteConfig.getString("maps_api_key")
+            if (task.isSuccessful) session.setKey(remoteConfig.getString("maps_api_key"))
             onComplete?.invoke()
         }
     }
@@ -198,18 +204,24 @@ class DriverProfile() : Fragment() {
                 dbRef.child("TodaGoDrive/Driver/${user.uid}").updateChildren(hashMapOf("/permit" to null, "/license" to null))
                     .addOnCompleteListener { task ->
                         if (task.isSuccessful) stRef.child("${user.uid}").delete()
-                        Global.user!!.apply {
-                            license = null
-                            permit = null
+                        session.user.value?.let { user ->
+                            user.apply {
+                                license = null
+                                permit = null
+                            }
+                            session.setUser(user)
                         }
-                        user = Global.user!!
+                        user = session.user.value!!
                     }
             }
             auth.currentUser!!.reload()
                 .addOnCompleteListener {
                     auth.currentUser!!.email.let {
                         if (it != user.email) {
-                            Global.user!!.email = it
+                            session.user.value?.let { user ->
+                                user.email = it
+                                session.setUser(user)
+                            }
                             user.email == it
                             dbRef.child("TodaGoDrive/Driver/${user.uid}/email").setValue(it)
                         }
@@ -234,14 +246,17 @@ class DriverProfile() : Fragment() {
                                                             committed: Boolean, currentData: DataSnapshot?
                                     ) {
                                         if (committed) {
-                                            Global.user!!.apply {
-                                                if (rates!! < 2) {
-                                                    rating = if (rates == 1) rating!! + 5F else 2.5F
-                                                    rates = rates!! + 1
+                                            session.user.value?.let { user ->
+                                                user.apply {
+                                                    if ((rates ?: 0) < 2) {
+                                                        rating = if (rates == 1) (rating ?: 0F) + 5F else 2.5F
+                                                        rates = (rates ?: 0) + 1
+                                                    }
+                                                    emailVerified = true
                                                 }
-                                                emailVerified = true
+                                                session.setUser(user)
                                             }
-                                            user = Global.user!!
+                                            user = session.user.value!!
                                             binding.stars.rating = user.rating!!/user.rates!!.toFloat()
                                             binding.rating.text = "${if ((user.rating!! / user.rates!!.toFloat()).isNaN()) 0F else user.rating!!/user.rates!!.toFloat()} (${user.rates})"
                                             binding.btnVerifyEmail.visibility = if (user.emailVerified == true) View.GONE else View.VISIBLE
@@ -273,7 +288,7 @@ class DriverProfile() : Fragment() {
     }
 
     private fun setupLocation() {
-        RetrofitClient.geocodeService.reverseGeocode("${user.location}", Global.key!!)
+        RetrofitClient.geocodeService.reverseGeocode("${user.location}", session.key.value!!)
             .enqueue(object : Callback<GeocodeResponse> {
                 override fun onResponse(call: Call<GeocodeResponse?>, response: Response<GeocodeResponse?>) {
                     if (response.isSuccessful) {
@@ -373,7 +388,10 @@ class DriverProfile() : Fragment() {
     private fun editPhone() {
         phoneDialog = PhoneDialog(account.type!!) { phone ->
             snackBar(view, "Phone number has been changed")
-            Global.user!!.phone = phone
+            session.user.value?.let { user ->
+                user.phone = phone
+                session.setUser(user)
+            }
             user.phone = phone
             binding.phone.text = user.phone
             editAccount()
@@ -392,14 +410,17 @@ class DriverProfile() : Fragment() {
     }
 
     private fun openAssocPicker() {
-        assocPickerDialog = AssocPickerDialog(Global.key!!) { assocUID, assocName, latLng, address ->
+        assocPickerDialog = AssocPickerDialog(session.key.value!!) { assocUID, assocName, latLng, address ->
             snackBar(view, "Your Location and Association has been changed")
-            Global.user!!.apply {
-                assoc = assocUID
-                location = latLng.toLatLngString()
-                verified = false
+            session.user.value?.let { user ->
+                user.apply {
+                    assoc = assocUID
+                    location = latLng.toLatLngString()
+                    verified = false
+                }
+                session.setUser(user)
             }
-            user = Global.user!!
+            user = session.user.value!!
             binding.assoc.text = assocName
             binding.location.text = (if (address.extra != null) "${address.extra}, " else "") +
                     (if (address.locality != null) "${address.locality}, " else "") +
@@ -448,7 +469,7 @@ class DriverProfile() : Fragment() {
                     else 2.5F
                 } else user.rating!!.plus(5F)
                 user.rates = user.rates!! + 1
-                Global.profiledUser = user
+                session.setProfiledUser(user)
                 setupData()
             }
             .addOnFailureListener {
