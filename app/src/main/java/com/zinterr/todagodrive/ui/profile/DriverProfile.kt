@@ -36,7 +36,7 @@ import com.zinterr.todagodrive.viewmodel.*
 import retrofit2.*
 
 @SuppressLint("SetTextI18n")
-class DriverProfile() : Fragment() {
+class DriverProfile : Fragment() {
 
     private lateinit var binding: DriverProfileBinding
     private val currentViewViewModel: CurrentViewViewModel by activityViewModels()
@@ -222,7 +222,7 @@ class DriverProfile() : Fragment() {
                                 user.email = it
                                 session.setUser(user)
                             }
-                            user.email == it
+                            user.email = it
                             dbRef.child("TodaGoDrive/Driver/${user.uid}/email").setValue(it)
                         }
                     }
